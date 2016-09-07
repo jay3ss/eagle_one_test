@@ -1,2 +1,11 @@
-# Ignore *.pyc 
+# Ignore *.pyc
 *.pyc
+
+# Ignore *~
+*~
+
+# Ignore *.xlsx
+*.xlsx
+
+# Ignore *.bag
+*.bag

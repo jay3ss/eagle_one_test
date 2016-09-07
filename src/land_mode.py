@@ -1,17 +1,17 @@
 #! /usr/bin/env python
 """
-Makes the QC follow and decrease altitude until it reaches a specified
-altitude to follow.
+Makes the QC land and decrease altitude until it reaches a specified
+altitude to land.
 If the tag is lost, a timer is started and if the tag cannot be recovered
 within a specified amount of time, it will enter the reacquisition mode. If the
 tag is recovered within the specified amount of time, it will continue on with
 its function (getting the QC to decrease to a specified height).
 
-Created by: Josh Saunders
-Date Created: 5/24/2016
+Created by: Amando Aranda
+Date Created: March 31, 2016
 
-Modified by:
-Date Modified:
+Modified by: David Rojas, Josh Saunders
+Date Modified: 5/16/2016, 5/21/2016
 """
 # We're using ROS here
 import rospy
@@ -22,7 +22,8 @@ import rospy
 from std_msgs.msg import String, Empty
 
 # Classes we need
-from Follow import Follow
+from Land import Landing
+from Controller import Controller
 from Navdata import navdata_info as nd
 
 # The messages that we need
@@ -40,15 +41,16 @@ from ardrone_autonomy.msg import Navdata
 # sub_state = rospy.Subscriber('/smach/state', String, state_cb, queue_size=1000)
 
 def main():
+    speed = -.05	 # m/s
     min_altitude = 0.8  # mm
-    altitude_goal = 2.5# mm
+    max_altitudeGoal = 2.5# mm
     height_diff = 0 #mm
     timeout  = 300# seconds
     # pid_i = (kp, ki, kd, integrator, derivator, set_point)
     pid_x = (6, 0.625, 2.5, 0, 0, 500)
     pid_y = (6, 0.875, 3.75, 0, 0, 500)
-    pid_z = (0.1,0,0,0,0,altitude_goal)
-    pid_theta = (1/260.0,0,0,0,0,0)
+    pid_z = (1,0,0,0,0,2.5)
+    pid_theta = (1/260,0,0,0,0,0)
 
     # set the bounding box
     bbx = (375, 625)
@@ -72,39 +74,33 @@ def main():
     # Twist commands
     qc = Twist()
 
-    follow  = Follow(bbx, bby, pid_x, pid_y, pid_z, pid_theta, bounding_box)
+    land  = Landing(speed, min_altitude, height_diff, max_altitudeGoal, \
+                    timeout, bbx, bby, pid_x, pid_y, pid_z, pid_theta)
     rate = rospy.Rate(200)
 
-    while((follow.state != 'follow')):
+    while((land.state != 'land')):
         # print takeoff.state
         rate.sleep()
 
     while not rospy.is_shutdown():
         # always update the altitude
-        if not (altitude_goal - 0.25 < navdata.altitude < altitude_goal + 0.25):
-        # if (navdata.altitude < altitude_goal):
-            z_update = follow.pid_z.update(navdata.altitude)
+        # z_update = land.pid_z.update(z_update)
         # print("Theta %.2f"  % navdata.theta)
         # print("(%d, %d)"  % (navdata.tag_x, navdata.tag_y))
-        if (altitude_goal  - 0.25 < navdata.altitude):
-            qc.linear.z = 0.25
-        elif (navdata.altitude < altitude_goal + 0.25):
-            qc.linear.z = -0.25
-        else:
-            qc.linear.z = 0
 
         if (navdata.tag_acquired):
             # If 10 < theta < 350 then let's rotate
-            if ((yaw_min < navdata.theta) and (navdata.theta < yaw_max)):
-            # if ((yaw_min < navdata.theta < yaw_max)):
-                yaw_update  = follow.pid_theta.update(navdata.theta-180)
-                # print "%.3f" % yaw_update
+            # if ((yaw_min < navdata.theta) and (navdata.theta < yaw_max)):
+            if ((yaw_min < navdata.theta < yaw_max)):
+                print "Yaw!"
+                yaw_update  = land.pid_theta.update(navdata.theta)
             else:
-                # print "No yaw!"
+                print "No yaw!"
                 yaw_update = 0
 
+
             # is_in_box(minimum, maximum, position)
-            if (follow.is_in_box(bbx_min, bbx_max, navdata.tag_y) and follow.is_in_box(bby_min, bby_max, navdata.tag_x)):
+            if (land.is_in_box(bbx_min, bbx_max, navdata.tag_y) and land.is_in_box(bby_min, bby_max, navdata.tag_x)):
                 # If the QC is in the bounding box then we should enter 'Hover'
                 # mode and just hang there
                 x_update = 0
@@ -115,17 +111,42 @@ def main():
 
             else:
                 # It's not in the bounding box therefore we should update the PIDs
-                x_update  = follow.pid_x.update(navdata.tag_x)
-                y_update  = follow.pid_y.update(navdata.tag_y)
-                # print("%.3f" % follow.pid_x.getError())
+                x_update  = land.pid_x.update(navdata.tag_x)
+                y_update  = land.pid_y.update(navdata.tag_y)
+                # print("%.3f" % land.pid_x.getError())
+
+        # always update the altitude
+        height_diff = land.max_altitudeGoal - land.altitude
+        # We only want to execute these manuevers if we're in land mode
+        if land.state == 'land':
+            # print("%.3f m" % land.altitude)
+            if(land.altitude > land.min_altitude):
+                print("Go down")
+                qc.linear.z  = speed
+                # if(land.height_diff > land.min_altitude):
+                #     # qc.linear.z  = speed
+                #     rate.sleep()
+                #     print("Descending")
+                # elif(land.height_diff <= land.min_altitude):
+                #     qc.linear.z  = 0
+            else:
+            # elif((land.altitude < land.min_altitude)):
+                if not (land.altitude == 0):
+                    print("Eagle one has descended!")
+                    land.land()
+                    # To change states, we publish the fact that we've
+                    # reached our land altitude
+                    rospy.loginfo("Going to secure mode")
+                    land.goto_secure()
 
         qc.angular.z = yaw_update
         qc.linear.x  = x_update
         qc.linear.y  = y_update
         # qc.linear.z  = z_update
 
-        follow.pub_ctrl.publish(qc)
+        land.pub_altitude.publish(qc)
         rate.sleep()
+
 
 if __name__=='__main__':
     main()
