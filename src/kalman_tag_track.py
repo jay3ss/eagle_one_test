@@ -8,8 +8,8 @@ Date Modified: 5/2/2016
 """
 # Python libraries
 from __future__ import print_function
-from filterpy.kalman import KalmanFilter
-from
+# from filterpy.kalman import KalmanFilter
+from Kalman import Kalman
 import sys
 import cv2
 import math
@@ -43,25 +43,37 @@ class HUD:
         self.tag_width = 0
         self.tag_theta = 0
 
+        self.x_pos = 0
+        self.y_pos = 0
+
         # Kalman filter stuff
-        f = KalmanFilter (dim_x=2, dim_z=1)
-
-        # Assign the initial value for the state (position and velocity)
-        f.x = np.array([[2.],    # position
-                        [0.]])   # velocity
-
-        # Define the state transition matrix
-        f.F = np.array([[1.,1.],
-                        [0.,1.]])
-
-        # Define the measurement function
-        f.H = np.array([[1.,0.]])
-
-        # Define the covariance matrix
-        f.P *= 1000.
-
-        # Assign the measurement noise
-        f.R = 5
+        #############
+        # ATTEMPT 1 #
+        #############
+        # f = KalmanFilter (dim_x=2, dim_z=1)
+        #
+        # # Assign the initial value for the state (position and velocity)
+        # f.x = np.array([[2.],    # position
+        #                 [0.]])   # velocity
+        #
+        # # Define the state transition matrix
+        # f.F = np.array([[1.,1.],
+        #                 [0.,1.]])
+        #
+        # # Define the measurement function
+        # f.H = np.array([[1.,0.]])
+        #
+        # # Define the covariance matrix
+        # f.P *= 1000.
+        #
+        # # Assign the measurement noise
+        # f.R = 5
+        #############
+        # ATTEMPT 2 #
+        #############
+        self.measurement = np.zeros((2,1)) # Measurement vector
+        self.state = np.zeros((2,1))       # Initial state vector [x,y,vx,vy]
+        self.kalman = Kalman()
 
     def cv_callback(self,data):
         """
@@ -91,9 +103,6 @@ class HUD:
         if(data.tags_count > 0):
             self.tag_acquired = True
 
-            # Predict the position of the tag
-            f.predict()
-
             # The positions need to be scaled due to the actual resolution
             # Actual resolution = 640 x 360
             # Data given as 1000 x 1000
@@ -109,10 +118,24 @@ class HUD:
         """
         Draws a crosshair over the center of the bounding of the tag
         """
+        self.measurement[0, 0] = self.tag_x
+        self.measurement[1, 0] = self.tag_y
+
+        # Predict the position of the tag
+        # f.predict()
+
+        self.kalman.state_callback()
+        self.kalman.measurement_callback(self.measurement)
+
+        self.state = self.kalman.x
+
+        self.x_pos = int(self.state[0, 0])
+        self.y_pos = int(self.state[1, 0])
+        
         # Draw the vertical line, then the horizontal, then the circle
-        cv2.line(cv_image, (self.tag_x, self.tag_y + 25),(self.tag_x, self.tag_y - 25),(255,255,0),2)
-        cv2.line(cv_image, (self.tag_x - 25, self.tag_y),(self.tag_x + 25, self.tag_y),(255,255,0),2)
-        cv2.circle(cv_image, (self.tag_x, self.tag_y), 10, (255, 255, 0), 2)
+        cv2.line(cv_image, (self.x_pos, self.y_pos + 25),(self.x_pos, self.y_pos - 25),(255,255,0),2)
+        cv2.line(cv_image, (self.x_pos - 25, self.y_pos),(self.x_pos + 25, self.y_pos),(255,255,0),2)
+        cv2.circle(cv_image, (self.x_pos, self.y_pos), 10, (255, 255, 0), 2)
 
 
 def main(args):
