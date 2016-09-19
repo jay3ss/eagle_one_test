@@ -31,7 +31,7 @@ class Kalman:
         self.R = measurement_noise_std * measurement_noise_std * np.identity(2)
 
         self.x = np.zeros((4,1)) #Initial state vector [x,y,vx,vy]
-        self.sigma = np.identity(4) #Initial covariance matrix
+        self.sigma = 9 * np.identity(4) #Initial covariance matrix
 
     def predictState(self, A, x):
         '''

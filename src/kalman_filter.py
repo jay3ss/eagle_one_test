@@ -15,19 +15,18 @@ def main():
     kalman = Kalman()
     navdata = navdata_info()
 
+    # conversions
+    x_conversion = 0.64
+    y_conversion = 0.36
+
     rospy.init_node('filtered_tag_data')
-    pub_kalman = rospy.Publisher('/kalman', Pose2D, queue_size=100)
+    pub_kalman = rospy.Publisher('/filtered_tag_pose', Pose2D, queue_size=100)
 
     rate = rospy.Rate(200) # 200Hz
 
     while not rospy.is_shutdown():
-        # measurement[0, 0] = navdata.norm_tag_x
-        # measurement[1, 0] = navdata.norm_tag_y
-        # measurement[2, 0] = navdata.tag_vx
-        # measurement[3, 0] = navdata.tag_vy
-
-        measurement[0, 0] = navdata.tag_x
-        measurement[1, 0] = navdata.tag_y
+        measurement[0, 0] = navdata.tag_x * x_conversion
+        measurement[1, 0] = navdata.tag_y * y_conversion
 
         kalman.state_callback()
         kalman.measurement_callback(measurement)
